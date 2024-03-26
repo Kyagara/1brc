@@ -1,8 +1,10 @@
 # 1brc
 
-Having fun with the (1brc)[https://github.com/gunnarmorling/1brc] challenge in go. Im not attempting to upload this somewhere, just trying different things and see what I can do.
+Having fun with the [1brc](https://github.com/gunnarmorling/1brc) challenge in go. Im not attempting to upload this somewhere, just trying different things and see what I can do.
 
 Development and benchmarking on Windows because I don't want to accidentaly kill my wsl instance with a OOM that is bound to occur at some point.
+
+Files used to create the dataset of 1m, 100m and 1b inside of `tools` folder.
 
 ## Challenge excerpts
 
