@@ -46,3 +46,19 @@ go run . 1m
 Benchmarking the process of reading, calculating and sorting the data, basically, everything that happens inside the `calculate.Run()` function.
 
 ### V1
+
+Jesus christ. The amount of allocs upsets me, the conversion of []byte to float32 gives me anxiety, and the fact that I used unsafe in my first attempt is a sign of things to come.
+
+```
+Benchmark1M-16                 1         216147500 ns/op        23946216 B/op      10073 allocs/op
+PASS
+ok      brc/calculate   0.339s
+
+Benchmark100M-16               1        24891124400 ns/op       2613286360 B/op    73236 allocs/op
+PASS
+ok      brc/calculate   25.289s
+
+go test ./calculate -bench=Benchmark1B -benchtime=1x -benchmem -memprofile mem.out -cpuprofile cpu.out
+runtime: VirtualAlloc of 524288 bytes failed with errno=1455
+fatal error: out of memory
+```
