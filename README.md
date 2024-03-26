@@ -43,4 +43,6 @@ go run . 1m
 
 ## Benchmark Results
 
+Benchmarking the process of reading, calculating and sorting the data, basically, everything that happens inside the `calculate.Run()` function.
+
 ### V1
