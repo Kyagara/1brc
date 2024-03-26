@@ -30,8 +30,9 @@ func main() {
 		if i == len(stations)-1 {
 			output += fmt.Sprintf("%s=%.1f/%.1f/%.1f}", station.Name, station.Min, station.Mean, station.Max)
 		} else {
-			output += fmt.Sprintf("%s=%.1f/%.1f/%.1f,", station.Name, station.Min, station.Mean, station.Max)
+			output += fmt.Sprintf("%s=%.1f/%.1f/%.1f, ", station.Name, station.Min, station.Mean, station.Max)
 		}
 	}
+
 	print(output)
 }
