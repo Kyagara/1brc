@@ -20,8 +20,18 @@ func main() {
 	}
 
 	path := "./data/" + option + ".txt"
-	err := calculate.Run(path)
+	stations, err := calculate.Run(path)
 	if err != nil {
 		panic(err)
 	}
+
+	output := "{"
+	for i, station := range stations {
+		if i == len(stations)-1 {
+			output += fmt.Sprintf("%s=%.1f/%.1f/%.1f}", station.Name, station.Min, station.Mean, station.Max)
+		} else {
+			output += fmt.Sprintf("%s=%.1f/%.1f/%.1f,", station.Name, station.Min, station.Mean, station.Max)
+		}
+	}
+	print(output)
 }
