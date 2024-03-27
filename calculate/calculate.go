@@ -3,17 +3,24 @@ package calculate
 import (
 	"bufio"
 	"bytes"
+	"hash/fnv"
 	"io"
 	"os"
-	"slices"
+	"sort"
 	"unsafe"
 )
 
+// Final result
 type Station struct {
 	Name string
 	Min  float32
 	Mean float32
 	Max  float32
+}
+
+type Info struct {
+	Name  string
+	Temps []float32
 }
 
 func Run(path string) ([]Station, error) {
@@ -45,7 +52,7 @@ func Run(path string) ([]Station, error) {
 	delimiter := byte('\n')
 	separator := byte(';')
 
-	stations := make(map[string][]float32, 10000)
+	stations := make(map[uint32]Info, 10000)
 
 	for {
 		line, err := scanner.ReadSlice(delimiter)
@@ -55,13 +62,14 @@ func Run(path string) ([]Station, error) {
 
 		i := bytes.IndexByte(line, separator)
 
-		name := line[:i]
-		station := *(*string)(unsafe.Pointer(&name))
+		nameBytes := line[:i]
+		name := *(*string)(unsafe.Pointer(&nameBytes))
+		hash := hash(nameBytes)
 
 		tempBytes := line[i+1 : len(line)-2]
 		temperature := parseFloat32(tempBytes)
 
-		temps, ok := stations[station]
+		info, ok := stations[hash]
 		if !ok {
 			// Attempting to prealloc some floats based on the filesize, just guess idk
 			max := 1024
@@ -74,30 +82,37 @@ func Run(path string) ([]Station, error) {
 				alloc = max
 			}
 
-			temps = make([]float32, 0, alloc)
+			info = Info{
+				Name:  name,
+				Temps: make([]float32, 0, alloc),
+			}
 		}
 
-		stations[station] = append(temps, temperature)
+		info.Temps = append(info.Temps, temperature)
+		stations[hash] = info
 	}
 
 	// Sorting and calculating
 
-	sortedNames := make([]string, 0, len(stations))
-	for key := range stations {
-		sortedNames = append(sortedNames, key)
+	var sortedKeys []uint32
+	for name := range stations {
+		sortedKeys = append(sortedKeys, name)
 	}
-	slices.Sort(sortedNames)
 
-	calculated := make([]Station, 0, len(sortedNames))
+	sort.Slice(sortedKeys, func(i, j int) bool {
+		return stations[sortedKeys[i]].Name < stations[sortedKeys[j]].Name
+	})
 
-	for _, name := range sortedNames {
-		temps := stations[name]
-		count := float32(len(temps))
+	calculated := make([]Station, 0, len(sortedKeys))
+
+	for _, name := range sortedKeys {
+		info := stations[name]
+		count := float32(len(info.Temps))
 
 		var sum float32
 		var min float32
 		var max float32
-		for _, temp := range temps {
+		for _, temp := range info.Temps {
 			sum += temp
 
 			if temp < min {
@@ -111,7 +126,7 @@ func Run(path string) ([]Station, error) {
 		mean := sum / count
 
 		station := Station{
-			Name: name,
+			Name: info.Name,
 			Min:  min,
 			Mean: mean,
 			Max:  max,
@@ -152,4 +167,10 @@ func parseFloat32(bytes []byte) float32 {
 
 	result /= power
 	return result
+}
+
+func hash(s []byte) uint32 {
+	h := fnv.New32a()
+	h.Write(s)
+	return h.Sum32()
 }
