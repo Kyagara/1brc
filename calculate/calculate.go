@@ -49,7 +49,7 @@ func Run(path string) ([]Station, error) {
 
 	stations := make(map[uint32]Info, 10000)
 
-	delimiter := byte('\n')
+	delimiter := byte('\r')
 	separator := byte(';')
 
 	// Reading lines
