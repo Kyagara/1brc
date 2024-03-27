@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"slices"
-	"strconv"
 	"unsafe"
 )
 
@@ -60,16 +59,13 @@ func Run(path string) ([]Station, error) {
 		station := *(*string)(unsafe.Pointer(&name))
 
 		tempBytes := line[i+1 : len(line)-2]
-		tempString := *(*string)(unsafe.Pointer(&tempBytes))
-		temperature, err := strconv.ParseFloat(tempString, 32)
-		if err != nil {
-			return nil, err
-		}
+		temperature := parseFloat32(tempBytes)
 
-		if stations[station] == nil {
-			// Attemping to prealloc some floats based on the filesize, just guess idk
+		temps, ok := stations[station]
+		if !ok {
+			// Attempting to prealloc some floats based on the filesize, just guess idk
 			max := 1024
-			// This number was revealed to me in a dream
+			// These numbers were revealed to me in a dream
 			revelation := fileSize / 1024 / 128
 			alloc := 0
 			if max >= revelation {
@@ -78,10 +74,10 @@ func Run(path string) ([]Station, error) {
 				alloc = max
 			}
 
-			stations[station] = make([]float32, 0, alloc)
+			temps = make([]float32, 0, alloc)
 		}
 
-		stations[station] = append(stations[station], float32(temperature))
+		stations[station] = append(temps, temperature)
 	}
 
 	// Sorting and calculating
@@ -97,24 +93,63 @@ func Run(path string) ([]Station, error) {
 	for _, name := range sortedNames {
 		temps := stations[name]
 		count := float32(len(temps))
-		slices.Sort(temps)
 
 		var sum float32
+		var min float32
+		var max float32
 		for _, temp := range temps {
 			sum += temp
+
+			if temp < min {
+				min = temp
+			}
+			if temp > max {
+				max = temp
+			}
 		}
 
 		mean := sum / count
 
 		station := Station{
 			Name: name,
-			Min:  temps[0],
+			Min:  min,
 			Mean: mean,
-			Max:  temps[len(temps)-1],
+			Max:  max,
 		}
 
 		calculated = append(calculated, station)
 	}
 
 	return calculated, nil
+}
+
+func parseFloat32(bytes []byte) float32 {
+	var result float32
+	var power float32 = 1
+	isNegative := false
+	decimal := false
+
+	for i, b := range bytes {
+		if i == 0 && b == '-' {
+			isNegative = true
+			continue
+		}
+
+		if b >= '0' && b <= '9' {
+			if decimal {
+				power *= 10
+			}
+
+			result = result*10 + float32(b-'0')
+		} else if b == '.' {
+			decimal = true
+		}
+	}
+
+	if isNegative {
+		result *= -1
+	}
+
+	result /= power
+	return result
 }

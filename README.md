@@ -47,6 +47,22 @@ go run . 1m
 
 Benchmarking the process of reading, calculating and sorting the data, basically, everything that happens inside the `calculate.Run()` function.
 
+### V1.1
+
+I was, for some reason, sorting the temperatures, finding the min, max and calculating the mean is now done in a single loop. I also added a custom parsefloat function, no more anxiety from []byte to (unsafe)string to float32 conversion.
+
+```
+Benchmark1M-16                 1         140032600 ns/op        23945352 B/op      10068 allocs/op
+PASS
+ok      brc/calculate   0.338s
+
+Benchmark100M-16               1        14905148400 ns/op       2613198056 B/op    73213 allocs/op
+PASS
+ok      brc/calculate   15.203s
+
+Benchmark1B-can you guess?
+```
+
 ### V1
 
 Jesus christ. The amount of allocs upsets me, the conversion of []byte to float32 gives me anxiety, and the fact that I used unsafe in my first attempt is a sign of things to come.
