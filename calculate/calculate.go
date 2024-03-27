@@ -38,22 +38,21 @@ func Run(path string) ([]Station, error) {
 	// 1gb
 	max := 1_024_000_000
 	fileSize := int(stat.Size())
-	alloc := 0
+
+	var scanner *bufio.Reader
+
 	if max >= fileSize {
-		alloc = fileSize
+		scanner = bufio.NewReader(file)
 	} else {
-		alloc = max
+		scanner = bufio.NewReaderSize(file, max)
 	}
 
-	// Reading lines
-
-	scanner := bufio.NewReaderSize(file, alloc)
+	stations := make(map[uint32]Info, 10000)
 
 	delimiter := byte('\n')
 	separator := byte(';')
 
-	stations := make(map[uint32]Info, 10000)
-
+	// Reading lines
 	for {
 		line, err := scanner.ReadSlice(delimiter)
 		if err == io.EOF {
@@ -94,7 +93,7 @@ func Run(path string) ([]Station, error) {
 
 	// Sorting and calculating
 
-	var sortedKeys []uint32
+	sortedKeys := make([]uint32, 0, len(stations))
 	for name := range stations {
 		sortedKeys = append(sortedKeys, name)
 	}
