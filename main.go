@@ -2,16 +2,28 @@ package main
 
 import (
 	"brc/calculate"
+	"bytes"
 	"fmt"
 	"os"
+	"runtime"
 	"slices"
+	"time"
 )
 
 func main() {
+	stats := false
+	now := time.Now()
+
 	dataset := []string{"1m", "100m", "1b"}
 
-	if len(os.Args) != 2 {
+	argsLength := len(os.Args)
+	if argsLength < 2 {
 		panic("Not enough arguments, example: ./main <1m | 100m | 1b>")
+	}
+
+	if argsLength > 2 && os.Args[2] == "-s" {
+		stats = true
+		now = time.Now()
 	}
 
 	option := os.Args[1]
@@ -25,14 +37,32 @@ func main() {
 		panic(err)
 	}
 
-	output := "{"
+	if stats {
+		mem := runtime.MemStats{}
+		runtime.ReadMemStats(&mem)
+
+		fmt.Printf("Results for '%s':\n", option)
+		fmt.Printf("Time elapsed: %fs\n", time.Since(now).Seconds())
+		fmt.Printf("System memory: %d mb\n", mem.Sys/1024/1024)
+		fmt.Printf("Mallocs: %d\n", mem.Mallocs)
+		fmt.Printf("Frees: %d\n", mem.Frees)
+		fmt.Printf("GC cycles: %d\n", mem.NumGC)
+
+		return
+	}
+
+	buffer := make([]byte, 0, len(stations))
+	buf := bytes.NewBuffer(buffer)
 	for i, station := range stations {
-		if i == len(stations)-1 {
-			output += fmt.Sprintf("%s=%.1f/%.1f/%.1f}", station.Name, station.Min, station.Mean, station.Max)
-		} else {
-			output += fmt.Sprintf("%s=%.1f/%.1f/%.1f, ", station.Name, station.Min, station.Mean, station.Max)
+		if i == 0 {
+			fmt.Fprintf(buf, "{%s=%.1f/%.1f/%.1f", station.Name, station.Min, station.Mean, station.Max)
+		}
+
+		if i > 0 {
+			fmt.Fprintf(buf, ", %s=%.1f/%.1f/%.1f", station.Name, station.Min, station.Mean, station.Max)
 		}
 	}
 
-	print(output)
+	buf.WriteByte('}')
+	println(buf.String())
 }

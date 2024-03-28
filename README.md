@@ -2,13 +2,17 @@
 
 Having fun with the [1brc](https://github.com/gunnarmorling/1brc) challenge in go. Im not attempting to upload this somewhere, just trying different things and see what I can do.
 
-Development and benchmarking on Windows because I don't want to accidentaly kill my wsl instance with a OOM that is bound to occur at some point.
+Development and benchmarking on Windows because I don't want to accidentaly kill my WSL instance with a OOM that is bound to occur at some point.
 
-Files used to create the dataset of 1m, 100m and 1b inside of `tools` folder.
+Files used to create the dataset of 1m, 100m and 1b inside of the `tools` folder.
+
+Tests are not currently being done to validate the correctness of the solutions.
+
+Only the `README.md` from the main branch will be up-to-date.
 
 ## Challenge excerpts
 
-Copy paste of some of the rules and how the output should look like.
+Copy and paste of some of the rules and how the output should look like.
 
 ### Rules and limits
 
@@ -37,44 +41,86 @@ The task is to write a ~Java~ go program which reads the file, calculates the mi
 
 Saving some commands I use here.
 
-```go
-go test ./calculate -bench=Benchmark1M -benchtime=1x -benchmem -memprofile mem.out -cpuprofile cpu.out
+```bash
+go test ./calculate -bench=Benchmark1M -benchtime=1x -benchmem -memprofile mem.out -cpuprofile cpu.out # create pprof profiles
 go tool pprof -http :3000 cpu.out
-go run . 1m
+go run . 1m # add '-s' to print stats and return before printing
 ```
 
 ## Benchmark Results
 
 Benchmarking the process of reading, calculating and sorting the data, basically, everything that happens inside the `calculate.Run()` function.
 
-### V1.1
+Allocs in the new way of getting results (just using runtime package) from V2 and above is not a 1:1 from the old way, I don't know how to get the same allocs/op from the go benchmark with the `-benchtime=1x -benchmem` flags.
 
-I was, for some reason, sorting the temperatures, finding the min, max and calculating the mean is now done in a single loop. I also added a custom parsefloat function, no more anxiety from []byte to (unsafe)string to float32 conversion.
+V2 and before had `-memprofile mem.out -cpuprofile cpu.out` flags set in the benchmark command, usually adding around 40 allocs/op.
+
+There is a 1gb memory limit when reading the file which is why the results memory usage are pretty similar.
+
+### V2
+
+No unsafe, for now. Dealing with min, mean and max in separated `Station` fields, instead of having a single []float32, that was a horrible idea. Station.Name is now a [100]byte. When using []byte, there usually needs to have a copy of the data to avoid garbage.
+
+First time 1B works!
+
+Including the old way of benchmark results and the new one.
 
 ```
-Benchmark1M-16                 1         140032600 ns/op        23945352 B/op      10068 allocs/op
-PASS
-ok      brc/calculate   0.338s
+Results for '1m':
+Time elapsed: 0.138377s
+System memory: 10 mb
+Mallocs: 234
+Frees: 7
+GC cycles: 0
 
-Benchmark100M-16               1        14905148400 ns/op       2613198056 B/op    73213 allocs/op
-PASS
-ok      brc/calculate   15.203s
+Results for '100m':
+Time elapsed: 11.768963s
+System memory: 987 mb
+Mallocs: 275
+Frees: 44
+GC cycles: 1
+
+Results for '1b':
+Time elapsed: 156.743223s
+System memory: 987 mb
+Mallocs: 275
+Frees: 50
+GC cycles: 2
+
+Benchmark1M-16       144884800 ns/op    3257648 B/op 68 allocs/op
+0.355s
+
+Benchmark100M-16   12598715300 ns/op 1027298936 B/op 78 allocs/op
+12.805s
+
+Benchmark1B-16    168614731300 ns/op 1027350960 B/op 96 allocs/op
+168.857s
+```
+
+### V1.1
+
+I was, for some reason, sorting the temperatures. Calculating the min, mean and max is now done in a single loop. I also added a custom parseFloat32 function, no more anxiety.
+
+```
+Benchmark1M-16     140032600 ns/op   23945352 B/op 10068 allocs/op
+0.338s
+
+Benchmark100M-16 14905148400 ns/op 2613198056 B/op 73213 allocs/op
+15.203s
 
 Benchmark1B-can you guess?
 ```
 
 ### V1
 
-Jesus christ. The amount of allocs upsets me, the conversion of []byte to float32 gives me anxiety, and the fact that I used unsafe in my first attempt is a sign of things to come.
+Jesus christ. The amount of allocs upsets me, the conversion of []byte -> string -> float32 gives me anxiety and the fact that I used unsafe in my first attempt is a sign of things to come.
 
 ```
-Benchmark1M-16                 1         216147500 ns/op        23946216 B/op      10073 allocs/op
-PASS
-ok      brc/calculate   0.339s
+Benchmark1M-16     216147500 ns/op   23946216 B/op 10073 allocs/op
+0.339s
 
-Benchmark100M-16               1        24891124400 ns/op       2613286360 B/op    73236 allocs/op
-PASS
-ok      brc/calculate   25.289s
+Benchmark100M-16 24891124400 ns/op 2613286360 B/op 73236 allocs/op
+25.289s
 
 go test ./calculate -bench=Benchmark1B -benchtime=1x -benchmem -memprofile mem.out -cpuprofile cpu.out
 runtime: VirtualAlloc of 524288 bytes failed with errno=1455

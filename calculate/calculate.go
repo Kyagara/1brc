@@ -7,20 +7,22 @@ import (
 	"io"
 	"os"
 	"sort"
-	"unsafe"
 )
 
 // Final result
 type Station struct {
-	Name string
+	Name [100]byte
 	Min  float32
 	Mean float32
 	Max  float32
 }
 
 type Info struct {
-	Name  string
-	Temps []float32
+	Count int
+	Total float32
+	Min   float32
+	Max   float32
+	Name  [100]byte
 }
 
 func Run(path string) ([]Station, error) {
@@ -49,45 +51,50 @@ func Run(path string) ([]Station, error) {
 
 	stations := make(map[uint32]Info, 10000)
 
-	delimiter := byte('\r')
 	separator := byte(';')
 
 	// Reading lines
+
 	for {
-		line, err := scanner.ReadSlice(delimiter)
+		line, err := readLines(scanner)
 		if err == io.EOF {
 			break
 		}
 
 		i := bytes.IndexByte(line, separator)
+		if i == -1 {
+			break
+		}
 
-		nameBytes := line[:i]
-		name := *(*string)(unsafe.Pointer(&nameBytes))
-		hash := hash(nameBytes)
+		nameBytes := line[1:i]
+		hash := hashName(nameBytes)
 
-		tempBytes := line[i+1 : len(line)-2]
-		temperature := parseFloat32(tempBytes)
+		tempBytes := line[i+1 : len(line)-1]
+		temp := parseFloat32(tempBytes)
 
 		info, ok := stations[hash]
 		if !ok {
-			// Attempting to prealloc some floats based on the filesize, just guess idk
-			max := 1024
-			// These numbers were revealed to me in a dream
-			revelation := fileSize / 1024 / 128
-			alloc := 0
-			if max >= revelation {
-				alloc = revelation
-			} else {
-				alloc = max
-			}
+			var name [100]byte
+			copy(name[:], nameBytes)
 
 			info = Info{
 				Name:  name,
-				Temps: make([]float32, 0, alloc),
+				Count: 0,
+				Total: 0,
+				Min:   0,
+				Max:   0,
 			}
 		}
 
-		info.Temps = append(info.Temps, temperature)
+		info.Count++
+		info.Total += temp
+		if temp > info.Max {
+			info.Max = temp
+		}
+		if temp < info.Min {
+			info.Min = temp
+		}
+
 		stations[hash] = info
 	}
 
@@ -99,36 +106,31 @@ func Run(path string) ([]Station, error) {
 	}
 
 	sort.Slice(sortedKeys, func(i, j int) bool {
-		return stations[sortedKeys[i]].Name < stations[sortedKeys[j]].Name
+		name1 := stations[sortedKeys[i]].Name
+		len1 := len(name1)
+		name2 := stations[sortedKeys[j]].Name
+		len2 := len(name2)
+
+		for i, j := 0, 0; i < len1 && j < len2; i, j = i+1, j+1 {
+			diff := int32(name1[i]) - int32(name2[j])
+			if diff != 0 {
+				return diff < 0
+			}
+		}
+		return len1 < len2
 	})
 
 	calculated := make([]Station, 0, len(sortedKeys))
 
-	for _, name := range sortedKeys {
-		info := stations[name]
-		count := float32(len(info.Temps))
-
-		var sum float32
-		var min float32
-		var max float32
-		for _, temp := range info.Temps {
-			sum += temp
-
-			if temp < min {
-				min = temp
-			}
-			if temp > max {
-				max = temp
-			}
-		}
-
-		mean := sum / count
+	for _, hash := range sortedKeys {
+		info := stations[hash]
+		mean := info.Total / float32(info.Count)
 
 		station := Station{
 			Name: info.Name,
-			Min:  min,
+			Min:  info.Min,
 			Mean: mean,
-			Max:  max,
+			Max:  info.Max,
 		}
 
 		calculated = append(calculated, station)
@@ -137,30 +139,38 @@ func Run(path string) ([]Station, error) {
 	return calculated, nil
 }
 
-func parseFloat32(bytes []byte) float32 {
-	var result float32
-	var power float32 = 1
-	isNegative := false
-	decimal := false
+func readLines(reader *bufio.Reader) ([]byte, error) {
+	delimiter := byte('\r')
 
-	for i, b := range bytes {
+	for {
+		line, err := reader.ReadSlice(delimiter)
+		if err != nil {
+			return nil, err
+		}
+
+		if line[len(line)-1] == delimiter {
+			return line, nil
+		}
+	}
+}
+
+func parseFloat32(data []byte) float32 {
+	var result float32
+	var power float32 = 10
+	negative := false
+
+	for i, b := range data {
 		if i == 0 && b == '-' {
-			isNegative = true
+			negative = true
 			continue
 		}
 
 		if b >= '0' && b <= '9' {
-			if decimal {
-				power *= 10
-			}
-
 			result = result*10 + float32(b-'0')
-		} else if b == '.' {
-			decimal = true
 		}
 	}
 
-	if isNegative {
+	if negative {
 		result *= -1
 	}
 
@@ -168,8 +178,8 @@ func parseFloat32(bytes []byte) float32 {
 	return result
 }
 
-func hash(s []byte) uint32 {
+func hashName(bytes []byte) uint32 {
 	h := fnv.New32a()
-	h.Write(s)
+	h.Write(bytes)
 	return h.Sum32()
 }
