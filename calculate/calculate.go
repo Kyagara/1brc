@@ -2,7 +2,6 @@ package calculate
 
 import (
 	"bufio"
-	"hash/fnv"
 	"io"
 	"os"
 	"sort"
@@ -11,7 +10,8 @@ import (
 const (
 	bufferSize = 65536
 	delimiter  = byte('\r')
-	semicolon  = byte(';')
+	newline    = byte('\n')
+	separator  = byte(';')
 )
 
 // Final result
@@ -44,15 +44,23 @@ func Run(path string) ([]Station, error) {
 
 	// Reading lines
 	for {
-		line, i, err := readLines(reader)
+		line, separatorIndex, err := read(reader)
 		if err == io.EOF {
 			break
 		}
 
-		nameBytes := line[1:i]
-		hash := hashName(nameBytes)
+		if err != nil {
+			return nil, err
+		}
 
-		tempBytes := line[i+1 : len(line)-1]
+		if separatorIndex == -1 {
+			break
+		}
+
+		nameBytes := line[:separatorIndex]
+		hash := hash(nameBytes)
+
+		tempBytes := line[separatorIndex:]
 		temp := parseFloat32(tempBytes)
 
 		info, ok := stations[hash]
@@ -122,26 +130,33 @@ func Run(path string) ([]Station, error) {
 	return calculated, nil
 }
 
-func readLines(reader *bufio.Reader) ([]byte, int, error) {
+func read(reader *bufio.Reader) ([]byte, int, error) {
+	line, err := reader.ReadSlice(delimiter)
+	if err != nil {
+		return nil, -1, err
+	}
 
-	for {
-		line, err := reader.ReadSlice(delimiter)
-		if err != nil {
-			return nil, -1, err
-		}
+	separatorIndex := -1
+	delimiterIndex := len(line) - 1
+	hasNewline := false
 
-		if line[len(line)-1] == delimiter {
-			index := -1
-			for i, b := range line {
-				if b == semicolon {
-					index = i
-					break
-				}
-			}
+	if line[0] == newline {
+		hasNewline = true
+	}
 
-			return line, index, nil
+	// looping here is slow
+	for i, b := range line {
+		if b == separator {
+			separatorIndex = i
+			break
 		}
 	}
+
+	if hasNewline {
+		return line[1:delimiterIndex], separatorIndex, nil
+	}
+
+	return line[:delimiterIndex], separatorIndex, nil
 }
 
 func parseFloat32(data []byte) float32 {
@@ -153,11 +168,7 @@ func parseFloat32(data []byte) float32 {
 		negative = true
 	}
 
-	for i, b := range data {
-		if i == 0 {
-			continue
-		}
-
+	for _, b := range data {
 		if b >= '0' && b <= '9' {
 			result = result*10 + float32(b-'0')
 		}
@@ -171,8 +182,11 @@ func parseFloat32(data []byte) float32 {
 	return result
 }
 
-func hashName(bytes []byte) uint32 {
-	h := fnv.New32a()
-	h.Write(bytes)
-	return h.Sum32()
+// Should be enough for a hash function
+func hash(bytes []byte) uint32 {
+	var result uint32
+	for _, b := range bytes {
+		result = result*31 + uint32(b)
+	}
+	return result
 }
