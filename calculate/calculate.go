@@ -2,11 +2,16 @@ package calculate
 
 import (
 	"bufio"
-	"bytes"
 	"hash/fnv"
 	"io"
 	"os"
 	"sort"
+)
+
+const (
+	bufferSize = 65536
+	delimiter  = byte('\r')
+	semicolon  = byte(';')
 )
 
 // Final result
@@ -32,37 +37,15 @@ func Run(path string) ([]Station, error) {
 	}
 	defer file.Close()
 
-	stat, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-
-	// 1gb
-	max := 1_024_000_000
-	fileSize := int(stat.Size())
-
-	var scanner *bufio.Reader
-
-	if max >= fileSize {
-		scanner = bufio.NewReader(file)
-	} else {
-		scanner = bufio.NewReaderSize(file, max)
-	}
+	// 64kb
+	reader := bufio.NewReaderSize(file, bufferSize)
 
 	stations := make(map[uint32]Info, 10000)
 
-	separator := byte(';')
-
 	// Reading lines
-
 	for {
-		line, err := readLines(scanner)
+		line, i, err := readLines(reader)
 		if err == io.EOF {
-			break
-		}
-
-		i := bytes.IndexByte(line, separator)
-		if i == -1 {
 			break
 		}
 
@@ -139,17 +122,24 @@ func Run(path string) ([]Station, error) {
 	return calculated, nil
 }
 
-func readLines(reader *bufio.Reader) ([]byte, error) {
-	delimiter := byte('\r')
+func readLines(reader *bufio.Reader) ([]byte, int, error) {
 
 	for {
 		line, err := reader.ReadSlice(delimiter)
 		if err != nil {
-			return nil, err
+			return nil, -1, err
 		}
 
 		if line[len(line)-1] == delimiter {
-			return line, nil
+			index := -1
+			for i, b := range line {
+				if b == semicolon {
+					index = i
+					break
+				}
+			}
+
+			return line, index, nil
 		}
 	}
 }
@@ -159,9 +149,12 @@ func parseFloat32(data []byte) float32 {
 	var power float32 = 10
 	negative := false
 
+	if data[0] == '-' {
+		negative = true
+	}
+
 	for i, b := range data {
-		if i == 0 && b == '-' {
-			negative = true
+		if i == 0 {
 			continue
 		}
 
