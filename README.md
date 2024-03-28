@@ -67,25 +67,16 @@ Including the old way of benchmark results and the new one.
 
 ```
 Results for '1m':
-Time elapsed: 0.138377s
-System memory: 10 mb
-Mallocs: 234
-Frees: 7
-GC cycles: 0
+Time: 0.14s     System Memory: 10mb
+Mallocs: 235    Frees: 7        GC cycles: 0
 
 Results for '100m':
-Time elapsed: 11.768963s
-System memory: 987 mb
-Mallocs: 275
-Frees: 44
-GC cycles: 1
+Time: 11.72s    System Memory: 987mb
+Mallocs: 273    Frees: 45       GC cycles: 1
 
 Results for '1b':
-Time elapsed: 156.743223s
-System memory: 987 mb
-Mallocs: 275
-Frees: 50
-GC cycles: 2
+Time: 156.70s   System Memory: 987mb
+Mallocs: 277    Frees: 52       GC cycles: 2
 
 Benchmark1M-16       144884800 ns/op    3257648 B/op 68 allocs/op
 0.355s
