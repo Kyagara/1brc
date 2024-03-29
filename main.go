@@ -41,8 +41,7 @@ func main() {
 		mem := runtime.MemStats{}
 		runtime.ReadMemStats(&mem)
 
-		fmt.Printf("Results for '%s':\n", option)
-		fmt.Printf("Time: %.2fs\tSystem Memory: %dmb\tStations: %d\n", time.Since(now).Seconds(), mem.Sys/1024/1024, len(stations))
+		fmt.Printf("Time: %.2fs\tMemory: %dmb\tStations: %d\n", time.Since(now).Seconds(), mem.Sys/1024/1024, len(stations))
 		fmt.Printf("Mallocs: %d\tFrees: %d\tGC cycles: %d\n", mem.Mallocs, mem.Frees, mem.NumGC)
 
 		return

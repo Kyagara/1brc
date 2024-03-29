@@ -36,7 +36,6 @@ func Run(path string) ([]Station, error) {
 	}
 	defer file.Close()
 
-	// 64kb
 	reader := bufio.NewReaderSize(file, bufferSize)
 
 	stations := make(map[uint32]Info, 10000)

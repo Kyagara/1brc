@@ -55,6 +55,19 @@ V2 and before had `-memprofile mem.out -cpuprofile cpu.out` flags set in the ben
 
 There is a 1gb memory limit when reading the file which is why the results memory usage are pretty similar.
 
+### v2.1
+
+Added a len(stations) to stats. Read buffer is now a fixed 65kb size. Some micro optimizations to functions. Rework on readLines and hash.
+
+More importantly, made new datasets, all have 413 unique stations, I will only include 1b benchmark results from now on.
+
+Using Linux from now on.
+
+```
+Time: 97.12s    Memory: 6mb     Stations: 413
+Mallocs: 125    Frees: 3        GC cycles: 0
+```
+
 ### V2
 
 No unsafe, for now. Dealing with min, mean and max in separated `Station` fields, instead of having a single []float32, that was a horrible idea. Station.Name is now a [100]byte. When using []byte, there usually needs to have a copy of the data to avoid garbage.
