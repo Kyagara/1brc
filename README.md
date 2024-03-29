@@ -2,7 +2,7 @@
 
 Having fun with the [1brc](https://github.com/gunnarmorling/1brc) challenge in go. Im not attempting to upload this somewhere, just trying different things and see what I can do.
 
-~Development and benchmarking on Windows because I don't want to accidentaly kill my WSL instance with a OOM that is bound to occur at some point.~ I hate Windows.
+~Development and benchmarking on Windows because I don't want to accidentaly kill my WSL instance with a OOM that is bound to occur at some point.~ I hate Windows. Only Linux supported.
 
 Tests are not currently being done to validate the correctness of the solutions.
 

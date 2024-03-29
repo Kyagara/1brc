@@ -9,8 +9,7 @@ import (
 
 const (
 	bufferSize = 65536
-	delimiter  = byte('\r')
-	newline    = byte('\n')
+	delimiter  = byte('\n')
 	separator  = byte(';')
 )
 
@@ -60,7 +59,7 @@ func Run(path string) ([]Station, error) {
 		nameBytes := line[:separatorIndex]
 		hash := hash(nameBytes)
 
-		tempBytes := line[separatorIndex:]
+		tempBytes := line[separatorIndex+1:]
 		temp := parseFloat32(tempBytes)
 
 		info, ok := stations[hash]
@@ -132,17 +131,12 @@ func Run(path string) ([]Station, error) {
 
 func read(reader *bufio.Reader) ([]byte, int, error) {
 	line, err := reader.ReadSlice(delimiter)
-	if err != nil {
+	if err != nil && err != bufio.ErrBufferFull {
 		return nil, -1, err
 	}
 
 	separatorIndex := -1
 	delimiterIndex := len(line) - 1
-	hasNewline := false
-
-	if line[0] == newline {
-		hasNewline = true
-	}
 
 	// looping here is slow
 	for i, b := range line {
@@ -150,10 +144,6 @@ func read(reader *bufio.Reader) ([]byte, int, error) {
 			separatorIndex = i
 			break
 		}
-	}
-
-	if hasNewline {
-		return line[1:delimiterIndex], separatorIndex, nil
 	}
 
 	return line[:delimiterIndex], separatorIndex, nil
