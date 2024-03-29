@@ -4,6 +4,7 @@ import (
 	"brc/calculate"
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"slices"
@@ -32,7 +33,7 @@ func main() {
 	}
 
 	path := "./data/" + option + ".txt"
-	stations, err := calculate.Run(path)
+	b, stations, err := calculate.Run(path)
 	if err != nil {
 		panic(err)
 	}
@@ -41,24 +42,11 @@ func main() {
 		mem := runtime.MemStats{}
 		runtime.ReadMemStats(&mem)
 
-		fmt.Printf("Time: %.2fs\tMemory: %dmb\tStations: %d\n", time.Since(now).Seconds(), mem.Sys/1024/1024, len(stations))
+		fmt.Printf("Time: %.2fs\tMemory: %dmb\tStations: %d\n", time.Since(now).Seconds(), mem.Sys/1024/1024, stations)
 		fmt.Printf("Mallocs: %d\tFrees: %d\tGC cycles: %d\n", mem.Mallocs, mem.Frees, mem.NumGC)
 
 		return
 	}
 
-	buffer := make([]byte, 0, len(stations))
-	buf := bytes.NewBuffer(buffer)
-	for i, station := range stations {
-		if i == 0 {
-			fmt.Fprintf(buf, "{%s=%.1f/%.1f/%.1f", station.Name, station.Min, station.Mean, station.Max)
-		}
-
-		if i > 0 {
-			fmt.Fprintf(buf, ", %s=%.1f/%.1f/%.1f", station.Name, station.Min, station.Mean, station.Max)
-		}
-	}
-
-	buf.WriteByte('}')
-	println(buf.String())
+	io.Copy(os.Stdout, bytes.NewReader(b))
 }

@@ -1,181 +1,165 @@
 package calculate
 
 import (
-	"bufio"
+	"bytes"
 	"io"
-	"os"
-	"sort"
+
+	"golang.org/x/exp/mmap"
 )
 
 const (
 	bufferSize = 65536
 	delimiter  = byte('\n')
 	separator  = byte(';')
+	equal      = byte('=')
+	slash      = byte('/')
 )
 
-// Final result
-type Station struct {
-	Name [100]byte
-	Min  float32
-	Mean float32
-	Max  float32
-}
+var (
+	separators = []byte{',', ' '}
+)
 
 type Info struct {
-	Count int
+	Hash  uint32
+	Count float32
 	Total float32
 	Min   float32
 	Max   float32
 	Name  [100]byte
 }
 
-func Run(path string) ([]Station, error) {
-	file, err := os.Open(path)
+func Run(path string) ([]byte, uint32, error) {
+	reader, err := mmap.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	defer file.Close()
+	defer reader.Close()
 
-	reader := bufio.NewReaderSize(file, bufferSize)
+	var size int64 = int64(reader.Len())
+	var at int64
 
-	stations := make(map[uint32]Info, 10000)
+	hashmap := NewHashMap(128000)
+	buffer := make([]byte, bufferSize)
 
-	// Reading lines
-	for {
-		line, separatorIndex, err := read(reader)
-		if err == io.EOF {
-			break
+	for at < size {
+		n, err := reader.ReadAt(buffer, at)
+		if err != nil && err != io.EOF {
+			return nil, 0, err
 		}
 
-		if err != nil {
-			return nil, err
-		}
-
-		if separatorIndex == -1 {
-			break
-		}
-
-		nameBytes := line[:separatorIndex]
-		hash := hash(nameBytes)
-
-		tempBytes := line[separatorIndex+1:]
-		temp := parseFloat32(tempBytes)
-
-		info, ok := stations[hash]
-		if !ok {
-			var name [100]byte
-			copy(name[:], nameBytes)
-
-			info = Info{
-				Name:  name,
-				Count: 0,
-				Total: 0,
-				Min:   0,
-				Max:   0,
+		if buffer[n-1] != delimiter {
+			// Backtrack until delimiter is found
+			for i := n - 1; i >= 0; i-- {
+				if buffer[i] == delimiter {
+					n = i + 1
+					break
+				}
 			}
 		}
 
-		info.Count++
-		info.Total += temp
-		if temp > info.Max {
-			info.Max = temp
-		}
-		if temp < info.Min {
-			info.Min = temp
-		}
-
-		stations[hash] = info
+		process(buffer[:n], hashmap)
+		at += int64(n)
 	}
 
-	// Sorting and calculating
+	hashmap.Sort()
 
-	sortedKeys := make([]uint32, 0, len(stations))
-	for name := range stations {
-		sortedKeys = append(sortedKeys, name)
-	}
+	output := make([]byte, 0, 128*hashmap.Size)
+	writer := bytes.NewBuffer(output)
 
-	sort.Slice(sortedKeys, func(i, j int) bool {
-		name1 := stations[sortedKeys[i]].Name
-		len1 := len(name1)
-		name2 := stations[sortedKeys[j]].Name
-		len2 := len(name2)
-
-		for i, j := 0, 0; i < len1 && j < len2; i, j = i+1, j+1 {
-			diff := int32(name1[i]) - int32(name2[j])
-			if diff != 0 {
-				return diff < 0
-			}
-		}
-		return len1 < len2
-	})
-
-	calculated := make([]Station, 0, len(sortedKeys))
-
-	for _, hash := range sortedKeys {
-		info := stations[hash]
-		mean := info.Total / float32(info.Count)
-
-		station := Station{
-			Name: info.Name,
-			Min:  info.Min,
-			Mean: mean,
-			Max:  info.Max,
+	writer.WriteByte('{')
+	for _, info := range hashmap.Entries {
+		if info.Count == 0 {
+			continue
 		}
 
-		calculated = append(calculated, station)
+		//mean := roundTowardsPositive(info.Total / info.Count)
+
+		// Name=Min/Mean/Max,<space>
+		writer.Write(info.Name[:])
+		writer.WriteByte(equal)
+		writer.WriteByte(slash)
+		writer.WriteByte(slash)
+		writer.Write(separators)
 	}
 
-	return calculated, nil
+	// Removing last ,<space>
+	writer.Truncate(writer.Len() - 2)
+	writer.WriteByte('}')
+	writer.WriteByte(delimiter)
+
+	return writer.Bytes(), hashmap.Size, nil
 }
 
-func read(reader *bufio.Reader) ([]byte, int, error) {
-	line, err := reader.ReadSlice(delimiter)
-	if err != nil && err != bufio.ErrBufferFull {
-		return nil, -1, err
-	}
+func process(buffer []byte, hashmap *HashMap) {
+	name := make([]byte, 0, 100)
 
-	separatorIndex := -1
-	delimiterIndex := len(line) - 1
-
-	// looping here is slow
-	for i, b := range line {
-		if b == separator {
-			separatorIndex = i
-			break
-		}
-	}
-
-	return line[:delimiterIndex], separatorIndex, nil
-}
-
-func parseFloat32(data []byte) float32 {
-	var result float32
-	var power float32 = 10
+	atNumber := false
+	var temperature float32
 	negative := false
 
-	if data[0] == '-' {
-		negative = true
-	}
+	separatorIndex := -1
+	read := 0
+	for i, b := range buffer {
+		if atNumber {
+			if b >= '0' && b <= '9' {
+				temperature = temperature*10 + float32(b-'0')
+				continue
+			}
 
-	for _, b := range data {
-		if b >= '0' && b <= '9' {
-			result = result*10 + float32(b-'0')
+			if b == delimiter {
+				read = i + 1
+
+				hash := hashmap.Hash(name)
+				info, ok := hashmap.Get(hash)
+				if !ok {
+					var nameCopy [100]byte
+					copy(nameCopy[:], name)
+
+					info = Info{
+						Name:  nameCopy,
+						Hash:  hash,
+						Count: 0,
+						Total: 0,
+						Min:   0,
+						Max:   0,
+					}
+				}
+
+				if negative {
+					temperature *= -1
+				}
+
+				info.Count++
+				info.Total += temperature
+				if temperature > info.Max {
+					info.Max = temperature
+				}
+
+				if temperature < info.Min {
+					info.Min = temperature
+				}
+
+				hashmap.Set(hash, info)
+
+				// Reset
+				temperature = 0
+				negative = false
+				atNumber = false
+			}
+
+			continue
+		}
+
+		if b == separator {
+			separatorIndex = i
+			name = buffer[read:separatorIndex]
+			read = i
+
+			// For the next iteration
+			atNumber = true
+			if buffer[i+1] == '-' {
+				negative = true
+			}
 		}
 	}
-
-	if negative {
-		result *= -1
-	}
-
-	result /= power
-	return result
-}
-
-// Should be enough for a hash function
-func hash(bytes []byte) uint32 {
-	var result uint32
-	for _, b := range bytes {
-		result = result*31 + uint32(b)
-	}
-	return result
 }
