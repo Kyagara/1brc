@@ -40,9 +40,9 @@ The task is to write a ~Java~ go program which reads the file, calculates the mi
 Saving some commands I use here.
 
 ```bash
-go test ./calculate -bench=Benchmark1M -benchtime=1x -benchmem -memprofile mem.out -cpuprofile cpu.out # create pprof profiles
+go test ./calculate -bench=Benchmark100M -benchtime=1x -benchmem -memprofile mem.out -cpuprofile cpu.out # create pprof profiles
 go tool pprof -http :3000 cpu.out
-go run . 1m # add '-s' to print stats and return before printing
+go run . 1m # add '-s' return before printing and print stats
 ```
 
 ## Benchmark Results
@@ -53,7 +53,7 @@ Allocs in the new way of getting results (just using runtime package) from V2 an
 
 V2 and before had `-memprofile mem.out -cpuprofile cpu.out` flags set in the benchmark command, usually adding around 40 allocs/op.
 
-There is a 1gb memory limit when reading the file which is why the results memory usage are pretty similar.
+There was a 1gb buffer set before V2.1 when reading the file which is why the memory usage up until V2.1 are pretty similar.
 
 ### v2.1
 

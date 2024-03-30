@@ -14,6 +14,7 @@ const (
 	separator  = byte(';')
 	equal      = byte('=')
 	slash      = byte('/')
+	minus      = byte('-')
 )
 
 var (
@@ -182,7 +183,7 @@ func process(buffer []byte, hashmap *HashMap) {
 
 			// For the next iteration
 			atNumber = true
-			if buffer[i+1] == '-' {
+			if buffer[i+1] == minus {
 				negative = true
 			}
 		}
