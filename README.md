@@ -49,11 +49,26 @@ go run . 1m # add '-s' return before printing and print stats
 
 Benchmarking the process of reading, calculating and sorting the data, basically, everything that happens inside the `calculate.Run()` function.
 
-Allocs in the new way of getting results (just using runtime package) from V2 and above is not a 1:1 from the old way, I don't know how to get the same allocs/op from the go benchmark with the `-benchtime=1x -benchmem` flags.
+Allocs in the new way of getting results (just using runtime package) from v2 and above is not a 1:1 from the old way, I don't know how to get the same allocs/op from the go benchmark with the `-benchtime=1x -benchmem` flags.
 
 V2 and before had `-memprofile mem.out -cpuprofile cpu.out` flags set in the benchmark command, usually adding around 40 allocs/op.
 
-There was a 1gb buffer set before V2.1 when reading the file which is why the memory usage up until V2.1 are pretty similar.
+There was a 1gb buffer set before v2.1 when reading the file which is why the memory usage up until v2.1 are pretty similar.
+
+### v3
+
+Using mmap, from the golang experimental package, that is technically a external library, I don't care, fow now.
+
+Custom hash map, incomplete, theres collision issues, size had to be increased to avoid it, which is why the memory usage is 4mb higher.
+
+Some functions either moved or rewritten to accommodate the above, this will also help when adding goroutines and channels next version.
+
+The writing of the results (from creation of the bytes.Buffer to copying it to stdout), is probably really slow, it works for now.
+
+"""
+Time: 77.33s Memory: 10mb Stations: 413
+Mallocs: 162 Frees: 16 GC cycles: 1
+"""
 
 ### v2.1
 
@@ -68,7 +83,7 @@ Time: 97.12s    Memory: 6mb     Stations: 413
 Mallocs: 125    Frees: 3        GC cycles: 0
 ```
 
-### V2
+### v2
 
 No unsafe, for now. Dealing with min, mean and max in separated `Station` fields, instead of having a single []float32, that was a horrible idea. Station.Name is now a [100]byte. When using []byte, there usually needs to have a copy of the data to avoid garbage.
 
@@ -99,7 +114,7 @@ Benchmark1B-16    168614731300 ns/op 1027350960 B/op 96 allocs/op
 168.857s
 ```
 
-### V1.1
+### v1.1
 
 I was, for some reason, sorting the temperatures. Calculating the min, mean and max is now done in a single loop. I also added a custom parseFloat32 function, no more anxiety.
 
@@ -113,7 +128,7 @@ Benchmark100M-16 14905148400 ns/op 2613198056 B/op 73213 allocs/op
 Benchmark1B-can you guess?
 ```
 
-### V1
+### v1
 
 Jesus christ. The amount of allocs upsets me, the conversion of []byte -> string -> float32 gives me anxiety and the fact that I used unsafe in my first attempt is a sign of things to come.
 
