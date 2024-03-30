@@ -38,7 +38,6 @@ func (h *HashMap) Sort() {
 	})
 }
 
-// Has conflitcs, few stations are missing
 func (h *HashMap) Hash(bytes []byte) uint32 {
 	var result uint32
 	for _, b := range bytes {

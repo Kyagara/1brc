@@ -3,6 +3,7 @@ package calculate
 import (
 	"bytes"
 	"io"
+	"strconv"
 
 	"golang.org/x/exp/mmap"
 )
@@ -29,22 +30,70 @@ type Info struct {
 }
 
 func Run(path string) ([]byte, uint32, error) {
+	// Should be 10000, but the hash function has collisions
+	// This number was revealed to me in a dream
+	hashmap := NewHashMap(30008)
+
 	reader, err := mmap.Open(path)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer reader.Close()
 
+	err = read(reader, hashmap)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	hashmap.Sort()
+
+	output := make([]byte, 0, 128*hashmap.Size)
+	writer := bytes.NewBuffer(output)
+
+	writer.WriteByte('{')
+	num := make([]byte, 0, 5)
+	for _, info := range hashmap.Entries {
+		if info.Count == 0 {
+			continue
+		}
+
+		mean := roundTowardsPositive(info.Total / info.Count)
+
+		// Name=Min/Mean/Max,<space>
+		writer.Write(info.Name[:])
+		writer.WriteByte(equal)
+		num = strconv.AppendFloat(num, float64(info.Min), 'f', -1, 32)
+		writer.Write(num)
+		num = num[:0]
+		writer.WriteByte(slash)
+		num = strconv.AppendFloat(num, float64(mean), 'f', -1, 32)
+		writer.Write(num)
+		num = num[:0]
+		writer.WriteByte(slash)
+		num = strconv.AppendFloat(num, float64(info.Max), 'f', -1, 32)
+		writer.Write(num)
+		num = num[:0]
+		writer.Write(separators)
+	}
+
+	// Removing last ,<space>
+	writer.Truncate(writer.Len() - 2)
+	writer.WriteByte('}')
+	writer.WriteByte(delimiter)
+
+	return writer.Bytes(), hashmap.Size, nil
+}
+
+func read(reader *mmap.ReaderAt, hashmap *HashMap) error {
 	var size int64 = int64(reader.Len())
 	var at int64
 
-	hashmap := NewHashMap(128000)
 	buffer := make([]byte, bufferSize)
 
 	for at < size {
 		n, err := reader.ReadAt(buffer, at)
 		if err != nil && err != io.EOF {
-			return nil, 0, err
+			return err
 		}
 
 		if buffer[n-1] != delimiter {
@@ -61,33 +110,7 @@ func Run(path string) ([]byte, uint32, error) {
 		at += int64(n)
 	}
 
-	hashmap.Sort()
-
-	output := make([]byte, 0, 128*hashmap.Size)
-	writer := bytes.NewBuffer(output)
-
-	writer.WriteByte('{')
-	for _, info := range hashmap.Entries {
-		if info.Count == 0 {
-			continue
-		}
-
-		//mean := roundTowardsPositive(info.Total / info.Count)
-
-		// Name=Min/Mean/Max,<space>
-		writer.Write(info.Name[:])
-		writer.WriteByte(equal)
-		writer.WriteByte(slash)
-		writer.WriteByte(slash)
-		writer.Write(separators)
-	}
-
-	// Removing last ,<space>
-	writer.Truncate(writer.Len() - 2)
-	writer.WriteByte('}')
-	writer.WriteByte(delimiter)
-
-	return writer.Bytes(), hashmap.Size, nil
+	return nil
 }
 
 func process(buffer []byte, hashmap *HashMap) {
@@ -128,6 +151,8 @@ func process(buffer []byte, hashmap *HashMap) {
 				if negative {
 					temperature *= -1
 				}
+
+				temperature /= 10
 
 				info.Count++
 				info.Total += temperature
