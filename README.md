@@ -42,7 +42,7 @@ Saving some commands I use here.
 ```bash
 go test ./calculate -bench=Benchmark100M -benchtime=1x -benchmem -memprofile mem.out -cpuprofile cpu.out # create pprof profiles
 go tool pprof -http :3000 cpu.out
-go run . 1m # add '-s' return before printing and print stats
+go run . path # add '-s' to print only stats, '-d' to print the output and stats
 ```
 
 ## Benchmark Results

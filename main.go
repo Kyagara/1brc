@@ -13,40 +13,43 @@ import (
 
 func main() {
 	stats := false
+	debug := false
 	now := time.Now()
 
-	dataset := []string{"1m", "100m", "1b"}
-
-	argsLength := len(os.Args)
-	if argsLength < 2 {
-		panic("Not enough arguments, example: ./main <1m | 100m | 1b>")
+	if len(os.Args) < 2 {
+		panic("Not enough arguments, example: ./brc <file>")
 	}
 
-	if argsLength > 2 && os.Args[2] == "-s" {
+	if slices.Contains(os.Args, "-d") {
+		debug = true
+		now = time.Now()
+	}
+
+	if slices.Contains(os.Args, "-s") {
 		stats = true
 		now = time.Now()
 	}
 
-	option := os.Args[1]
-	if !slices.Contains(dataset, option) {
-		panic(fmt.Errorf("invalid dataset. Must be one of: %v, got: %v", dataset, option))
-	}
-
-	path := "./data/" + option + ".txt"
-	b, stations, err := calculate.Run(path)
+	output, stations, err := calculate.Run(os.Args[1])
 	if err != nil {
 		panic(err)
 	}
 
 	if stats {
-		mem := runtime.MemStats{}
-		runtime.ReadMemStats(&mem)
-
-		fmt.Printf("Time: %.2fs\tMemory: %dmb\tStations: %d\n", time.Since(now).Seconds(), mem.Sys/1024/1024, stations)
-		fmt.Printf("Mallocs: %d\tFrees: %d\tGC cycles: %d\n", mem.Mallocs, mem.Frees, mem.NumGC)
-
+		printStats(now, stations)
 		return
 	}
 
-	io.Copy(os.Stdout, bytes.NewReader(b))
+	io.Copy(os.Stdout, bytes.NewReader(output))
+
+	if debug {
+		printStats(now, stations)
+	}
+}
+
+func printStats(now time.Time, stations uint32) {
+	mem := runtime.MemStats{}
+	runtime.ReadMemStats(&mem)
+	fmt.Printf("Time: %.2fs\tMemory: %dmb\tStations: %d\n", time.Since(now).Seconds(), mem.Sys/1024/1024, stations)
+	fmt.Printf("Mallocs: %d\tFrees: %d\tGC cycles: %d\n", mem.Mallocs, mem.Frees, mem.NumGC)
 }
