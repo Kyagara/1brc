@@ -3,7 +3,9 @@ package calculate
 import (
 	"bytes"
 	"io"
+	"runtime"
 	"strconv"
+	"sync"
 
 	"golang.org/x/exp/mmap"
 )
@@ -41,10 +43,18 @@ func Run(path string) ([]byte, uint32, error) {
 	}
 	defer reader.Close()
 
-	err = read(reader, hashmap)
-	if err != nil {
-		return nil, 0, err
+	processChannel := make(chan []byte, bufferSize*32*32)
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < runtime.NumCPU(); i++ {
+		wg.Add(1)
+		go process(&wg, hashmap, processChannel)
 	}
+
+	read(reader, processChannel)
+
+	wg.Wait()
 
 	hashmap.Sort()
 
@@ -61,20 +71,8 @@ func Run(path string) ([]byte, uint32, error) {
 		mean := roundTowardsPositive(info.Total / info.Count)
 
 		// Name=Min/Mean/Max,<space>
-		writer.Write(info.Name[:])
-		writer.WriteByte(equal)
-		num = strconv.AppendFloat(num, float64(info.Min), 'f', -1, 32)
-		writer.Write(num)
 		num = num[:0]
-		writer.WriteByte(slash)
-		num = strconv.AppendFloat(num, float64(mean), 'f', -1, 32)
-		writer.Write(num)
-		num = num[:0]
-		writer.WriteByte(slash)
-		num = strconv.AppendFloat(num, float64(info.Max), 'f', -1, 32)
-		writer.Write(num)
-		num = num[:0]
-		writer.Write(separators)
+		write(writer, info, mean, num)
 	}
 
 	// Removing last ,<space>
@@ -85,16 +83,33 @@ func Run(path string) ([]byte, uint32, error) {
 	return writer.Bytes(), hashmap.Size, nil
 }
 
-func read(reader *mmap.ReaderAt, hashmap *HashMap) error {
+func write(writer *bytes.Buffer, info Info, mean float32, num []byte) {
+	writer.Write(info.Name[:])
+	writer.WriteByte(equal)
+	num = strconv.AppendFloat(num, float64(info.Min), 'f', -1, 32)
+	writer.Write(num)
+	num = num[:0]
+	writer.WriteByte(slash)
+	num = strconv.AppendFloat(num, float64(mean), 'f', -1, 32)
+	writer.Write(num)
+	num = num[:0]
+	writer.WriteByte(slash)
+	num = strconv.AppendFloat(num, float64(info.Max), 'f', -1, 32)
+	writer.Write(num)
+	writer.Write(separators)
+}
+
+func read(reader *mmap.ReaderAt, process chan []byte) {
+	defer close(process)
+
 	var size int64 = int64(reader.Len())
 	var at int64
 
 	buffer := make([]byte, bufferSize)
-
 	for at < size {
 		n, err := reader.ReadAt(buffer, at)
 		if err != nil && err != io.EOF {
-			return err
+			return
 		}
 
 		if buffer[n-1] != delimiter {
@@ -107,84 +122,90 @@ func read(reader *mmap.ReaderAt, hashmap *HashMap) error {
 			}
 		}
 
-		process(buffer[:n], hashmap)
+		bufferCopy := getBuffer()
+		copy(bufferCopy, buffer[:n])
+		process <- bufferCopy
+		putBuffer(bufferCopy)
 		at += int64(n)
 	}
-
-	return nil
 }
 
-func process(buffer []byte, hashmap *HashMap) {
-	name := make([]byte, 0, 100)
+func process(wg *sync.WaitGroup, hashmap *HashMap, process <-chan []byte) {
+	defer wg.Done()
 
-	atNumber := false
-	var temperature float32
-	negative := false
+	for buffer := range process {
+		name := make([]byte, 0, 100)
 
-	separatorIndex := -1
-	read := 0
-	for i, b := range buffer {
-		if atNumber {
-			if b >= '0' && b <= '9' {
-				temperature = temperature*10 + float32(b-'0')
+		atNumber := false
+		var temperature float32
+		negative := false
+
+		separatorIndex := -1
+		read := 0
+		for i, b := range buffer {
+			if atNumber {
+				if b >= '0' && b <= '9' {
+					temperature = temperature*10 + float32(b-'0')
+					continue
+				}
+
+				if b == delimiter {
+					read = i + 1
+
+					hash := hashmap.Hash(name)
+					info, ok := hashmap.Get(hash)
+					if !ok {
+						var nameCopy [100]byte
+						copy(nameCopy[:], name)
+
+						info = Info{
+							Name:  nameCopy,
+							Hash:  hash,
+							Count: 0,
+							Total: 0,
+							Min:   0,
+							Max:   0,
+						}
+					}
+
+					if negative {
+						temperature *= -1
+					}
+
+					temperature /= 10
+
+					info.Count++
+					info.Total += temperature
+					if temperature > info.Max {
+						info.Max = temperature
+					}
+
+					if temperature < info.Min {
+						info.Min = temperature
+					}
+
+					hashmap.Set(hash, info)
+
+					// Reset
+					temperature = 0
+					negative = false
+					atNumber = false
+				}
+
 				continue
 			}
 
-			if b == delimiter {
-				read = i + 1
+			if b == separator {
+				separatorIndex = i
+				name = buffer[read:separatorIndex]
+				read = i
 
-				hash := hashmap.Hash(name)
-				info, ok := hashmap.Get(hash)
-				if !ok {
-					var nameCopy [100]byte
-					copy(nameCopy[:], name)
+				// For the next iteration
+				atNumber = true
 
-					info = Info{
-						Name:  nameCopy,
-						Hash:  hash,
-						Count: 0,
-						Total: 0,
-						Min:   0,
-						Max:   0,
-					}
+				if buffer[i+1] == minus {
+					negative = true
 				}
-
-				if negative {
-					temperature *= -1
-				}
-
-				temperature /= 10
-
-				info.Count++
-				info.Total += temperature
-				if temperature > info.Max {
-					info.Max = temperature
-				}
-
-				if temperature < info.Min {
-					info.Min = temperature
-				}
-
-				hashmap.Set(hash, info)
-
-				// Reset
-				temperature = 0
-				negative = false
-				atNumber = false
-			}
-
-			continue
-		}
-
-		if b == separator {
-			separatorIndex = i
-			name = buffer[read:separatorIndex]
-			read = i
-
-			// For the next iteration
-			atNumber = true
-			if buffer[i+1] == minus {
-				negative = true
 			}
 		}
 	}

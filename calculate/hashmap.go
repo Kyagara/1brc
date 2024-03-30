@@ -12,7 +12,11 @@ type HashMap struct {
 }
 
 func NewHashMap(capacity uint32) *HashMap {
-	return &HashMap{Capacity: capacity, Size: 0, Entries: make([]Info, capacity)}
+	return &HashMap{
+		Entries:  make([]Info, capacity),
+		Capacity: capacity,
+		Size:     0,
+	}
 }
 
 func (h *HashMap) Set(key uint32, value Info) {
@@ -26,8 +30,9 @@ func (h *HashMap) Set(key uint32, value Info) {
 }
 
 func (h *HashMap) Get(key uint32) (Info, bool) {
-	if h.Entries[key].Hash == key {
-		return h.Entries[key], true
+	val := h.Entries[key]
+	if val.Count > 0 {
+		return val, true
 	}
 	return Info{}, false
 }
