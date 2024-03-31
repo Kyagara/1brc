@@ -3,38 +3,46 @@ package calculate
 import (
 	"bytes"
 	"sort"
+	"sync"
 )
 
 type HashMap struct {
-	Entries  []Info
+	Entries  []Station
 	Capacity uint32
 	Size     uint32
+	mu       *sync.Mutex
 }
 
 func NewHashMap(capacity uint32) *HashMap {
 	return &HashMap{
-		Entries:  make([]Info, capacity),
+		Entries:  make([]Station, capacity),
 		Capacity: capacity,
 		Size:     0,
+		mu:       &sync.Mutex{},
 	}
 }
 
-func (h *HashMap) Set(key uint32, value Info) {
+func (h *HashMap) Set(key uint32, value Station) {
+	h.mu.Lock()
 	if h.Entries[key].Hash == key {
 		h.Entries[key] = value
+		h.mu.Unlock()
 		return
 	}
 
 	h.Entries[key] = value
 	h.Size++
+	h.mu.Unlock()
 }
 
-func (h *HashMap) Get(key uint32) (Info, bool) {
+func (h *HashMap) Get(key uint32) (Station, bool) {
+	h.mu.Lock()
 	val := h.Entries[key]
+	h.mu.Unlock()
 	if val.Count > 0 {
 		return val, true
 	}
-	return Info{}, false
+	return Station{}, false
 }
 
 func (h *HashMap) Sort() {

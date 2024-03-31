@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"runtime"
-	"strconv"
 	"sync"
 
 	"golang.org/x/exp/mmap"
@@ -23,7 +22,7 @@ var (
 	separators = []byte{',', ' '}
 )
 
-type Info struct {
+type Station struct {
 	Hash  uint32
 	Count float32
 	Total float32
@@ -43,36 +42,36 @@ func Run(path string) ([]byte, uint32, error) {
 	}
 	defer reader.Close()
 
-	processChannel := make(chan []byte, bufferSize*32*32)
+	cpu := runtime.NumCPU()
+	processChannel := make(chan []byte, bufferSize*cpu)
 
 	var wg sync.WaitGroup
-
-	for i := 0; i < runtime.NumCPU(); i++ {
+	for i := 0; i < cpu; i++ {
 		wg.Add(1)
 		go process(&wg, hashmap, processChannel)
 	}
 
 	read(reader, processChannel)
-
 	wg.Wait()
 
 	hashmap.Sort()
+
+	// Writing the string output
 
 	output := make([]byte, 0, 128*hashmap.Size)
 	writer := bytes.NewBuffer(output)
 
 	writer.WriteByte('{')
 	num := make([]byte, 0, 5)
-	for _, info := range hashmap.Entries {
-		if info.Count == 0 {
+
+	for _, station := range hashmap.Entries {
+		if station.Count == 0 {
 			continue
 		}
 
-		mean := roundTowardsPositive(info.Total / info.Count)
-
+		mean := roundTowardsPositive(station.Total / station.Count)
 		// Name=Min/Mean/Max,<space>
-		num = num[:0]
-		write(writer, info, mean, num)
+		writeStation(writer, station, mean, num)
 	}
 
 	// Removing last ,<space>
@@ -81,22 +80,6 @@ func Run(path string) ([]byte, uint32, error) {
 	writer.WriteByte(delimiter)
 
 	return writer.Bytes(), hashmap.Size, nil
-}
-
-func write(writer *bytes.Buffer, info Info, mean float32, num []byte) {
-	writer.Write(info.Name[:])
-	writer.WriteByte(equal)
-	num = strconv.AppendFloat(num, float64(info.Min), 'f', -1, 32)
-	writer.Write(num)
-	num = num[:0]
-	writer.WriteByte(slash)
-	num = strconv.AppendFloat(num, float64(mean), 'f', -1, 32)
-	writer.Write(num)
-	num = num[:0]
-	writer.WriteByte(slash)
-	num = strconv.AppendFloat(num, float64(info.Max), 'f', -1, 32)
-	writer.Write(num)
-	writer.Write(separators)
 }
 
 func read(reader *mmap.ReaderAt, process chan []byte) {
@@ -122,10 +105,10 @@ func read(reader *mmap.ReaderAt, process chan []byte) {
 			}
 		}
 
-		bufferCopy := getBuffer()
+		bufferCopy := make([]byte, n)
 		copy(bufferCopy, buffer[:n])
 		process <- bufferCopy
-		putBuffer(bufferCopy)
+
 		at += int64(n)
 	}
 }
@@ -136,76 +119,79 @@ func process(wg *sync.WaitGroup, hashmap *HashMap, process <-chan []byte) {
 	for buffer := range process {
 		name := make([]byte, 0, 100)
 
-		atNumber := false
 		var temperature float32
 		negative := false
 
 		separatorIndex := -1
 		read := 0
-		for i, b := range buffer {
-			if atNumber {
-				if b >= '0' && b <= '9' {
-					temperature = temperature*10 + float32(b-'0')
-					continue
-				}
 
-				if b == delimiter {
-					read = i + 1
+		for i := 0; i < len(buffer); i++ {
+			b := buffer[i]
 
-					hash := hashmap.Hash(name)
-					info, ok := hashmap.Get(hash)
-					if !ok {
-						var nameCopy [100]byte
-						copy(nameCopy[:], name)
-
-						info = Info{
-							Name:  nameCopy,
-							Hash:  hash,
-							Count: 0,
-							Total: 0,
-							Min:   0,
-							Max:   0,
-						}
-					}
-
-					if negative {
-						temperature *= -1
-					}
-
-					temperature /= 10
-
-					info.Count++
-					info.Total += temperature
-					if temperature > info.Max {
-						info.Max = temperature
-					}
-
-					if temperature < info.Min {
-						info.Min = temperature
-					}
-
-					hashmap.Set(hash, info)
-
-					// Reset
-					temperature = 0
-					negative = false
-					atNumber = false
-				}
-
-				continue
-			}
-
-			if b == separator {
+			switch b {
+			// Getting the name and then looping until the delimiter for the temperature
+			case separator:
 				separatorIndex = i
 				name = buffer[read:separatorIndex]
-				read = i
 
-				// For the next iteration
-				atNumber = true
+				// Getting the float
 
-				if buffer[i+1] == minus {
+				numIndex := i + 1
+				if buffer[numIndex] == minus {
 					negative = true
+					numIndex++
 				}
+
+				for ; buffer[numIndex] != delimiter; numIndex++ {
+					num := buffer[numIndex]
+					if num >= '0' && num <= '9' {
+						temperature = temperature*10 + float32(num-'0')
+					}
+				}
+
+				if negative {
+					temperature *= -1
+				}
+
+				temperature /= 10
+
+				i = numIndex - 1
+
+			// Calculating the temperature and storing the station
+			case delimiter:
+				read = i + 1
+
+				hash := hashmap.Hash(name)
+				station, ok := hashmap.Get(hash)
+				if !ok {
+					var nameCopy [100]byte
+					copy(nameCopy[:], name)
+
+					station = Station{
+						Name:  nameCopy,
+						Hash:  hash,
+						Count: 0,
+						Total: 0,
+						Min:   0,
+						Max:   0,
+					}
+				}
+
+				station.Count++
+				station.Total += temperature
+				if temperature > station.Max {
+					station.Max = temperature
+				}
+
+				if temperature < station.Min {
+					station.Min = temperature
+				}
+
+				hashmap.Set(hash, station)
+
+				// Reset
+				temperature = 0
+				negative = false
 			}
 		}
 	}
