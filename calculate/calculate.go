@@ -3,6 +3,7 @@ package calculate
 import (
 	"bytes"
 	"io"
+	"os"
 	"runtime"
 	"sync"
 
@@ -38,25 +39,34 @@ type Station struct {
 	Hash  uint32
 }
 
+var (
+	at       int64
+	fileSize int64
+	atMutex  = &sync.Mutex{}
+)
+
 func Run(path string) ([]byte, int, error) {
-	reader, err := mmap.Open(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer reader.Close()
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	file.Close()
+	fileSize = stat.Size()
 
 	cpu := runtime.NumCPU()
 	hashmap := NewHashMap(cpu)
 
-	processChannel := make(chan []byte, bufferSize)
-
 	var wg sync.WaitGroup
 	for i := 0; i < cpu; i++ {
 		wg.Add(1)
-		go process(&wg, i, hashmap, processChannel)
+		go read(&wg, i, hashmap, path)
 	}
 
-	go read(reader, processChannel)
 	wg.Wait()
 
 	stations := hashmap.Sort()
@@ -87,16 +97,26 @@ func Run(path string) ([]byte, int, error) {
 	return writer.Bytes(), len(stations), nil
 }
 
-func read(reader *mmap.ReaderAt, process chan []byte) {
-	defer close(process)
+func read(wg *sync.WaitGroup, shard int, hashmap *HashMap, p string) {
+	defer wg.Done()
 
-	var size int64 = int64(reader.Len())
-	var at int64
+	reader, err := mmap.Open(p)
+	if err != nil {
+		return
+	}
+	defer reader.Close()
 
 	buffer := make([]byte, bufferSize)
-	for at < size {
+	for {
+		atMutex.Lock()
+		if at >= fileSize {
+			atMutex.Unlock()
+			return
+		}
+
 		n, err := reader.ReadAt(buffer, at)
 		if err != nil && err != io.EOF {
+			atMutex.Unlock()
 			return
 		}
 
@@ -110,61 +130,58 @@ func read(reader *mmap.ReaderAt, process chan []byte) {
 			}
 		}
 
-		// This copy makes me upset
-		bufferCopy := make([]byte, n)
-		copy(bufferCopy, buffer[:n])
-		process <- bufferCopy
-
 		at += int64(n)
+		atMutex.Unlock()
+
+		// This copy makes me upset
+		b := make([]byte, n)
+		copy(b, buffer[:n])
+		process(shard, hashmap, b)
 	}
 }
 
-func process(wg *sync.WaitGroup, shard int, hashmap *HashMap, process <-chan []byte) {
-	defer wg.Done()
+func process(shard int, hashmap *HashMap, buffer []byte) {
+	var temperature float32
+	negative := false
 
-	for buffer := range process {
-		var temperature float32
-		negative := false
+	separatorIndex := 0
+	nameIndex := 0
 
-		separatorIndex := 0
-		nameIndex := 0
+	for i, b := range buffer {
+		switch b {
+		case separator:
+			separatorIndex = i
 
-		for i, b := range buffer {
-			switch b {
-			case separator:
-				separatorIndex = i
+		// Calculating the temperature and storing the station
+		case delimiter:
+			name := buffer[nameIndex:separatorIndex]
+			temp := buffer[separatorIndex+1 : i]
 
-			// Calculating the temperature and storing the station
-			case delimiter:
-				name := buffer[nameIndex:separatorIndex]
-				temp := buffer[separatorIndex+1 : i]
-
-				for _, num := range temp {
-					if num == minus {
-						negative = true
-						continue
-					}
-
-					if (num & 0xF0) == 0x30 {
-						// Expensive
-						temperature = temperature*10 + float32(num-'0')
-					}
+			for _, num := range temp {
+				if num == minus {
+					negative = true
+					continue
 				}
 
-				if negative {
-					temperature *= -1
+				if (num & 0xF0) == 0x30 {
+					// Expensive
+					temperature = temperature*10 + float32(num-'0')
 				}
-
-				temperature /= 10
-
-				// Really expensive (cache miss)
-				hashmap.Set(shard, name, temperature)
-
-				// Reset
-				temperature = 0
-				negative = false
-				nameIndex = i + 1
 			}
+
+			if negative {
+				temperature *= -1
+			}
+
+			temperature /= 10
+
+			// Really expensive (cache miss)
+			hashmap.Set(shard, name, temperature)
+
+			// Reset
+			temperature = 0
+			negative = false
+			nameIndex = i + 1
 		}
 	}
 }
