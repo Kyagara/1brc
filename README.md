@@ -55,6 +55,28 @@ V2 and before had `-memprofile mem.out -cpuprofile cpu.out` flags set in the ben
 
 There was a 1gb buffer set before v2.1 when reading the file which is why the memory usage up until v2.1 are pretty similar.
 
+### v4.1
+
+Using more for ranges. Forgot to use 1 in AppendFloat for the output at the Min and Max fields. Merging read and process functions, this improved my results by around 2s.
+
+For now this is it, bottlenecks looks like to be the hashmap (cache miss when looking up a station) and the temperature calculation/parsing. A smaller struct and maybe a different approach on the hashmap itself might be the next step. There is a lack of unsafe, which is good thing for me.
+
+Other than those things and the use of the experimental mmap package, I am happy with the progress, learned more about go and other things and had a lot of fun optimizing.
+
+```
+go build
+
+./brc ./data/1b.txt -d
+{Abha=-33.3/18.0/68.9, Abidjan=-20.6/26.0/73.5, ...}
+Time: 19.81s    Memory: 216mb   Stations: 413
+Mallocs: 8460   Frees: 7154     GC cycles: 137
+
+time ./brc ./data/1b.txt > /dev/null
+real    0m19.577s
+user    1m9.453s
+sys     0m5.433s
+```
+
 ### v4
 
 Using goroutines and channels. Hashmap and process workers using shards to avoid using a lock. Changed buffer size, again, now at 2gb, works well for me.

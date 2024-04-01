@@ -12,7 +12,7 @@ func writeStation(writer *bytes.Buffer, station Station, mean float32, num []byt
 
 	num = num[:0]
 
-	num = strconv.AppendFloat(num, float64(station.Min), 'f', -1, 32)
+	num = strconv.AppendFloat(num, float64(station.Min), 'f', 1, 32)
 	writer.Write(num)
 
 	num = num[:0]
@@ -22,7 +22,7 @@ func writeStation(writer *bytes.Buffer, station Station, mean float32, num []byt
 
 	num = num[:0]
 	writer.WriteByte(slash)
-	num = strconv.AppendFloat(num, float64(station.Max), 'f', -1, 32)
+	num = strconv.AppendFloat(num, float64(station.Max), 'f', 1, 32)
 	writer.Write(num)
 
 	writer.Write(separators)
