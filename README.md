@@ -63,9 +63,10 @@ How can I avoid creating a new buffer for every read? Increasing the buffer size
 
 I will probably have to start using unsafe, temperature conversion and updating the station is taking some cpu time.
 
-´´´
+```
 Time: 22.85s Memory: 237mb Stations: 413
 Mallocs: 6980 Frees: 6554 GC cycles: 121
+```
 
 ### v3
 
