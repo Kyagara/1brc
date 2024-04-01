@@ -2,7 +2,7 @@
 
 Having fun with the [1brc](https://github.com/gunnarmorling/1brc) challenge in go. Im not attempting to upload this somewhere, just trying different things and see what I can do.
 
-~Development and benchmarking on Windows because I don't want to accidentaly kill my WSL instance with a OOM that is bound to occur at some point.~ I hate Windows. Only Linux supported.
+~Development and benchmarking on Windows because I don't want to accidentaly kill my WSL instance with a OOM that is bound to occur at some point.~ I hate Windows.
 
 Tests are not currently being done to validate the correctness of the solutions.
 
@@ -55,6 +55,18 @@ V2 and before had `-memprofile mem.out -cpuprofile cpu.out` flags set in the ben
 
 There was a 1gb buffer set before v2.1 when reading the file which is why the memory usage up until v2.1 are pretty similar.
 
+### v4
+
+Using goroutines and channels. Hashmap and process workers using shards to avoid using a lock. Changed buffer size, again, now at 2gb, works well for me.
+
+How can I avoid creating a new buffer for every read? Increasing the buffer size helps with gc since there will be less allocations and less garbage to collect.
+
+I will probably have to start using unsafe, temperature conversion and updating the station is taking some cpu time.
+
+´´´
+Time: 22.85s Memory: 237mb Stations: 413
+Mallocs: 6980 Frees: 6554 GC cycles: 121
+
 ### v3
 
 Using mmap, from the golang experimental package, that is technically a external library, I don't care, fow now.
@@ -65,10 +77,10 @@ Some functions either moved or rewritten to accommodate the above, this will als
 
 The writing of the results (from creation of the bytes.Buffer to copying it to stdout), is probably really slow, it works for now.
 
-"""
+```
 Time: 77.33s Memory: 10mb Stations: 413
 Mallocs: 162 Frees: 16 GC cycles: 1
-"""
+```
 
 ### v2.1
 
