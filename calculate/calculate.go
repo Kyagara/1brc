@@ -126,27 +126,26 @@ func process(wg *sync.WaitGroup, shard int, hashmap *HashMap, process <-chan []b
 		var temperature float32
 		negative := false
 
-		separatorIndex := -1
-		read := 0
+		separatorIndex := 0
+		nameIndex := 0
 
-		for i := 0; i < len(buffer); i++ {
-			b := buffer[i]
-
+		for i, b := range buffer {
 			switch b {
-			// Getting the name and then looping for the temperature
 			case separator:
-				// The last character of the station name ends at i-1
 				separatorIndex = i
 
-				numIndex := i + 1
-				for ; buffer[numIndex] != delimiter; numIndex++ {
-					num := buffer[numIndex]
+			// Calculating the temperature and storing the station
+			case delimiter:
+				name := buffer[nameIndex:separatorIndex]
+				temp := buffer[separatorIndex+1 : i]
+
+				for _, num := range temp {
 					if num == minus {
 						negative = true
 						continue
 					}
 
-					if num >= '0' && num <= '9' {
+					if (num & 0xF0) == 0x30 {
 						temperature = temperature*10 + float32(num-'0')
 					}
 				}
@@ -157,19 +156,12 @@ func process(wg *sync.WaitGroup, shard int, hashmap *HashMap, process <-chan []b
 
 				temperature /= 10
 
-				// Adjusting the index because of the temperature loop
-				i = numIndex - 1
-
-			// Calculating the temperature and storing the station
-			case delimiter:
-				name := buffer[read:separatorIndex]
-				read = i + 1
-
 				hashmap.Set(shard, name, temperature)
 
 				// Reset
 				temperature = 0
 				negative = false
+				nameIndex = i + 1
 			}
 		}
 	}

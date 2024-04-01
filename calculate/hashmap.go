@@ -24,7 +24,7 @@ func (h *HashMap) Set(shard int, name []byte, temperature float32) {
 	hash := h.Hash(name)
 
 	// More '/' = more cpu time
-	// Any read or write to a field from Station is really slow,
+	// Any first read or write to a field from Station is really slow,
 	// I believe it has to do with cache misses
 
 	station := &h.Shards[shard][hash] ///
