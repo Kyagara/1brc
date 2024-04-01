@@ -10,12 +10,19 @@ import (
 )
 
 const (
-	bufferSize = 65536
-	delimiter  = byte('\n')
-	separator  = byte(';')
-	equal      = byte('=')
-	slash      = byte('/')
-	minus      = byte('-')
+	// This size works well on my machine
+	bufferSize = 1 << 21
+	// Hash map has colisions, with this size my dataset of 413 stations works well
+	// This number was revealed to me in a dream
+	hashMapSize = 30008
+)
+
+const (
+	delimiter = byte('\n')
+	separator = byte(';')
+	equal     = byte('=')
+	slash     = byte('/')
+	minus     = byte('-')
 )
 
 var (
@@ -23,19 +30,15 @@ var (
 )
 
 type Station struct {
-	Hash  uint32
+	Name  []byte
 	Count float32
 	Total float32
 	Min   float32
 	Max   float32
-	Name  [100]byte
+	Hash  uint32
 }
 
-func Run(path string) ([]byte, uint32, error) {
-	// Should be 10000, but the hash function has collisions
-	// This number was revealed to me in a dream
-	hashmap := NewHashMap(30008)
-
+func Run(path string) ([]byte, int, error) {
 	reader, err := mmap.Open(path)
 	if err != nil {
 		return nil, 0, err
@@ -43,28 +46,30 @@ func Run(path string) ([]byte, uint32, error) {
 	defer reader.Close()
 
 	cpu := runtime.NumCPU()
-	processChannel := make(chan []byte, bufferSize*cpu)
+	hashmap := NewHashMap(cpu)
+
+	processChannel := make(chan []byte, bufferSize)
 
 	var wg sync.WaitGroup
 	for i := 0; i < cpu; i++ {
 		wg.Add(1)
-		go process(&wg, hashmap, processChannel)
+		go process(&wg, i, hashmap, processChannel)
 	}
 
-	read(reader, processChannel)
+	go read(reader, processChannel)
 	wg.Wait()
 
-	hashmap.Sort()
+	stations := hashmap.Sort()
 
 	// Writing the string output
 
-	output := make([]byte, 0, 128*hashmap.Size)
+	output := make([]byte, 0, 128*len(stations))
 	writer := bytes.NewBuffer(output)
 
 	writer.WriteByte('{')
 	num := make([]byte, 0, 5)
 
-	for _, station := range hashmap.Entries {
+	for _, station := range stations {
 		if station.Count == 0 {
 			continue
 		}
@@ -79,7 +84,7 @@ func Run(path string) ([]byte, uint32, error) {
 	writer.WriteByte('}')
 	writer.WriteByte(delimiter)
 
-	return writer.Bytes(), hashmap.Size, nil
+	return writer.Bytes(), len(stations), nil
 }
 
 func read(reader *mmap.ReaderAt, process chan []byte) {
@@ -105,6 +110,7 @@ func read(reader *mmap.ReaderAt, process chan []byte) {
 			}
 		}
 
+		// This copy makes me upset
 		bufferCopy := make([]byte, n)
 		copy(bufferCopy, buffer[:n])
 		process <- bufferCopy
@@ -113,12 +119,10 @@ func read(reader *mmap.ReaderAt, process chan []byte) {
 	}
 }
 
-func process(wg *sync.WaitGroup, hashmap *HashMap, process <-chan []byte) {
+func process(wg *sync.WaitGroup, shard int, hashmap *HashMap, process <-chan []byte) {
 	defer wg.Done()
 
 	for buffer := range process {
-		name := make([]byte, 0, 100)
-
 		var temperature float32
 		negative := false
 
@@ -129,21 +133,19 @@ func process(wg *sync.WaitGroup, hashmap *HashMap, process <-chan []byte) {
 			b := buffer[i]
 
 			switch b {
-			// Getting the name and then looping until the delimiter for the temperature
+			// Getting the name and then looping for the temperature
 			case separator:
+				// The last character of the station name ends at i-1
 				separatorIndex = i
-				name = buffer[read:separatorIndex]
-
-				// Getting the float
 
 				numIndex := i + 1
-				if buffer[numIndex] == minus {
-					negative = true
-					numIndex++
-				}
-
 				for ; buffer[numIndex] != delimiter; numIndex++ {
 					num := buffer[numIndex]
+					if num == minus {
+						negative = true
+						continue
+					}
+
 					if num >= '0' && num <= '9' {
 						temperature = temperature*10 + float32(num-'0')
 					}
@@ -155,39 +157,15 @@ func process(wg *sync.WaitGroup, hashmap *HashMap, process <-chan []byte) {
 
 				temperature /= 10
 
+				// Adjusting the index because of the temperature loop
 				i = numIndex - 1
 
 			// Calculating the temperature and storing the station
 			case delimiter:
+				name := buffer[read:separatorIndex]
 				read = i + 1
 
-				hash := hashmap.Hash(name)
-				station, ok := hashmap.Get(hash)
-				if !ok {
-					var nameCopy [100]byte
-					copy(nameCopy[:], name)
-
-					station = Station{
-						Name:  nameCopy,
-						Hash:  hash,
-						Count: 0,
-						Total: 0,
-						Min:   0,
-						Max:   0,
-					}
-				}
-
-				station.Count++
-				station.Total += temperature
-				if temperature > station.Max {
-					station.Max = temperature
-				}
-
-				if temperature < station.Min {
-					station.Min = temperature
-				}
-
-				hashmap.Set(hash, station)
+				hashmap.Set(shard, name, temperature)
 
 				// Reset
 				temperature = 0

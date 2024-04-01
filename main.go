@@ -47,7 +47,7 @@ func main() {
 	}
 }
 
-func printStats(now time.Time, stations uint32) {
+func printStats(now time.Time, stations int) {
 	mem := runtime.MemStats{}
 	runtime.ReadMemStats(&mem)
 	fmt.Printf("Time: %.2fs\tMemory: %dmb\tStations: %d\n", time.Since(now).Seconds(), mem.Sys/1024/1024, stations)

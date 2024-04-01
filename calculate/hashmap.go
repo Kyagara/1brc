@@ -3,52 +3,82 @@ package calculate
 import (
 	"bytes"
 	"sort"
-	"sync"
 )
 
 type HashMap struct {
-	Entries  []Station
-	Capacity uint32
-	Size     uint32
-	mu       *sync.Mutex
+	Shards [][]Station
 }
 
-func NewHashMap(capacity uint32) *HashMap {
+func NewHashMap(shards int) *HashMap {
+	store := make([][]Station, shards)
+	for i := range store {
+		store[i] = make([]Station, hashMapSize)
+	}
+
 	return &HashMap{
-		Entries:  make([]Station, capacity),
-		Capacity: capacity,
-		Size:     0,
-		mu:       &sync.Mutex{},
+		Shards: store,
 	}
 }
 
-func (h *HashMap) Set(key uint32, value Station) {
-	h.mu.Lock()
-	if h.Entries[key].Hash == key {
-		h.Entries[key] = value
-		h.mu.Unlock()
-		return
+func (h *HashMap) Set(shard int, name []byte, temperature float32) {
+	hash := h.Hash(name)
+
+	// More '/' = more cpu time
+	// Any read or write to a field from Station is really slow,
+	// I believe it has to do with cache misses
+
+	station := &h.Shards[shard][hash] ///
+	if station.Count == 0 {           ////////
+		station.Hash = hash
+		station.Name = name
 	}
 
-	h.Entries[key] = value
-	h.Size++
-	h.mu.Unlock()
-}
+	station.Count++ //
+	station.Total += temperature
 
-func (h *HashMap) Get(key uint32) (Station, bool) {
-	h.mu.Lock()
-	val := h.Entries[key]
-	h.mu.Unlock()
-	if val.Count > 0 {
-		return val, true
+	if temperature < station.Min {
+		station.Min = temperature
 	}
-	return Station{}, false
+
+	if temperature > station.Max {
+		station.Max = temperature
+	}
 }
 
-func (h *HashMap) Sort() {
-	sort.Slice(h.Entries, func(i, j int) bool {
-		return bytes.Compare(h.Entries[i].Name[:], h.Entries[j].Name[:]) < 0
+func (h *HashMap) Sort() []Station {
+	merged := make(map[uint32]Station)
+	for _, shard := range h.Shards {
+		for _, station := range shard {
+			if station.Count > 0 {
+				val, ok := merged[station.Hash]
+				if !ok {
+					merged[station.Hash] = station
+					continue
+				}
+
+				val.Total += station.Total
+				val.Count += station.Count
+				if station.Min < val.Min {
+					val.Min = station.Min
+				}
+				if station.Max > val.Max {
+					val.Max = station.Max
+				}
+				merged[station.Hash] = val
+			}
+		}
+	}
+
+	sorted := make([]Station, 0, len(merged))
+	for _, val := range merged {
+		sorted = append(sorted, val)
+	}
+
+	sort.Slice(sorted, func(i, j int) bool {
+		return bytes.Compare(sorted[i].Name[:], sorted[j].Name[:]) < 0
 	})
+
+	return sorted
 }
 
 func (h *HashMap) Hash(bytes []byte) uint32 {
@@ -56,5 +86,5 @@ func (h *HashMap) Hash(bytes []byte) uint32 {
 	for _, b := range bytes {
 		result = result*31 + uint32(b)
 	}
-	return result % h.Capacity
+	return result % hashMapSize
 }
