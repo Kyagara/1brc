@@ -146,6 +146,7 @@ func process(wg *sync.WaitGroup, shard int, hashmap *HashMap, process <-chan []b
 					}
 
 					if (num & 0xF0) == 0x30 {
+						// Expensive
 						temperature = temperature*10 + float32(num-'0')
 					}
 				}
@@ -156,6 +157,7 @@ func process(wg *sync.WaitGroup, shard int, hashmap *HashMap, process <-chan []b
 
 				temperature /= 10
 
+				// Really expensive (cache miss)
 				hashmap.Set(shard, name, temperature)
 
 				// Reset
